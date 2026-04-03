@@ -1,0 +1,137 @@
+---
+title: "Predicting Income with Social Data"
+output: html_notebook
+---
+
+```{r message=FALSE, warning=FALSE}
+# load packages and data
+library(ggplot2)
+library(dplyr)
+library(modelr)
+psid <- read.csv("psid_2017.csv")
+
+```
+
+```{r}
+# view data structure
+str(psid)
+# 'data.frame':   26445 obs. of  10 variables:
+#  $ X.1            : int  1 2 3 4 5 6 7 8 9 10 ...
+#  $ X              : int  1 2 3 4 5 6 7 8 9 10 ...
+#  $ gender         : int  2 2 2 2 1 2 2 1 2 1 ...
+#  $ age            : int  59 57 43 44 42 30 27 27 25 21 ...
+#  $ married        : int  0 0 0 0 0 1 0 0 0 0 ...
+#  $ employed       : Factor w/ 8 levels "disabled","employed",..: 1 2 1 NA 2 2 2 2 8 NA ...
+#  $ educated_in_us : int  1 1 1 9 1 1 1 1 1 0 ...
+#  $ highest_degree : Factor w/ 9 levels "associate","bachelor",..: 7 7 7 7 7 7 7 7 7 7 ...
+#  $ education_years: int  12 12 12 99 12 12 12 12 12 0 ...
+#  $ labor_income   : int  0 0 0 0 0 0 0 0 0 0 ...
+
+# plot age
+age_distr <- ggplot(psid, aes(x=age)) + geom_bar() + labs(x="Age", y="Count")
+age_distr
+
+# filter to reasonable age group
+psid_clean <- psid %>%
+  filter(age >= 18 & age <= 75)
+
+# plot flitered age
+filt_age_dist <- ggplot(psid_clean, aes(x=age)) + geom_bar() + labs(x="Age", y="Count")
+filt_age_dist
+
+# plot education #1 showed an outlier of 100 years, so let's filter and recreate
+edu_plot <- ggplot(psid_clean, aes(x=education_years)) + geom_bar() + labs(x="Education (Years)", y="Count")
+edu_plot
+
+# filter to reasonable education levels (i.e. not an outlier of 100!)
+psid_clean <- psid_clean %>%
+  filter(education_years >= 5 & education_years <= 25)
+
+edu_plot2 <- ggplot(psid_clean, aes(x=education_years)) + geom_bar() + labs(x="Education (Years)", y="Count")
+edu_plot2
+
+# plot income
+income_plot <- ggplot(psid_clean, aes(x=labor_income)) + geom_boxplot()
+print(income_plot)
+
+# view income summary statistics
+summary(psid_clean$labor_income)
+  # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  #     0       0       0    1771       0  370500 
+# This output tells us that the majority of observations in our dataset have no income, and that over 75% of observations (3rd Quartile) have 0 labor income
+
+# plot mean income by age
+# Let’s make sure we fully understand how this highly skewed income distribution relates to our key variables in our dataset. Create a scatterplot of average income by age using dplyr‘s group_by and summarise() functions, along with ggplot‘s geom_point().
+income_by_age_plot <- psid_clean %>%
+  group_by(age) %>%
+  summarize(mean_income = mean(labor_income)) %>%
+  ggplot(aes(age, mean_income))+
+  geom_point()
+
+income_by_age_plot
+
+# Which ages seem most likely to have zero labor_income?
+# It seems like those 50 years are older are much more likely to have zero income. While this skew will effect our model, given that up until the age of 50 there appears to be a roughly linear relationship between age and labor_income, it is still valid to use linear regression to model this dataset.
+
+
+# subset data points into train and test sets
+set.seed(123)
+sample <- sample(c(TRUE, FALSE), nrow(psid_clean), replace = T, prob = c(0.6,0.4))
+
+# define train and test
+train <- psid_clean[sample, ]
+test <- psid_clean[!sample, ]
+
+# build model
+model <- lm(labor_income ~ education_years, data = train)
+
+# plot against LOESS model
+model_plot <- ggplot(train, aes(education_years, labor_income)) + 
+  # to plot our observed values:
+  geom_point() + 
+  geom_smooth(method="lm") +
+  # To add the line:
+  geom_smooth(se=FALSE, color="red")
+
+model_plot
+# It looks like our model is quite similar to the average of observed values as plotted by the LOESS
+
+# compute r-squared
+r_sq <- (summary(model)$r.squared) * 100
+
+# Based on a simple linear regression model, we have determined that 0.0635590519708107 percent of the variation in respondent income can be predicted by a respondent's education level.
+
+# uncomment to write out r-squared interpretation
+sprintf("Based on a simple linear regression model, we have determined that %s percent of the variation in respondent income can be predicted by a respondent's education level.", r_sq)
+
+# build second model
+model_2 <- lm(labor_income ~ education_years + age + gender, data = train)
+
+r_sq_2 <- (summary(model_2)$r.squared) * 100
+
+# Based on a simple linear regression model, we have determined that 3.24780720630645 percent of the variation in respondent income can be predicted by a respondent's education level, age and gender.
+
+# uncomment to write out r-squared interpretation
+sprintf("Based on a simple linear regression model, we have determined that %s percent of the variation in respondent income can be predicted by a respondent's education level, age and gender.", r_sq_2)
+
+# plot predictions versus observed
+mddel_2_plot <- test %>%
+  add_predictions(model_2) %>%
+  ggplot(aes(age, labor_income)) + 
+  geom_point() + 
+  geom_line(aes(y=pred), color="blue") + 
+  labs(x="Age", y="Labor Income")
+mddel_2_plot
+
+# write out model results
+# Do education_years, age, and gender all have a significant impact on labor_income ?
+# A: All variables are highly significant, with a p-value < 0.01. -gender is a boolean categorical variable; how should we interpret its’ coefficient value? In this case, the gender coefficient represents the effect of changing the gender of the respondent to woman.
+# Which variable has the largest effect on labor_income? 
+# A: gender has the largest absolute effect on labor_income.
+
+# extract education coefficent
+education_coefficent <- model_2$coefficients[2] 
+
+# uncomment to write out coefficent interpretation
+sprintf("Based on a multiple linear regression model of education, age, and gender, for every additional year of formal education, the average American resident's income increases by $%s.", education_coefficent)
+```

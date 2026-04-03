@@ -1,0 +1,132 @@
+---
+title: "Aggregates in R"
+output: html_notebook
+---
+
+```{r message = FALSE, error=TRUE}
+# load packages
+library(readr)
+library(dplyr)
+```
+
+```{r message = FALSE, error=TRUE}
+# load ad clicks data
+ad_clicks <- read_csv("ad_clicks.csv")
+```
+
+```{r error=TRUE}
+# inspect ad_clicks here:
+head(ad_clicks)
+```
+
+```{r error=TRUE}
+# define views_by_utm here:
+views_by_utm <- ad_clicks %>%
+  group_by(utm_source) %>%
+  summarize(count = n())
+# utm_source count
+# email	      255
+# facebook	  504
+# google	    680
+# twitter	    215
+```
+
+```{r error=TRUE}
+# define clicks_by_utm here:
+clicks_by_utm <- ad_clicks %>%
+  group_by(utm_source, ad_clicked) %>%
+  summarize(count = n())
+
+# utm_source  ad_clicked  count
+# email	FALSE	175
+# email	TRUE	80
+# facebook	FALSE	324
+# facebook	TRUE	180
+# google	FALSE	441
+# google	TRUE	239
+# twitter	FALSE	149
+# twitter	TRUE	66
+```
+
+```{r error=TRUE}
+# define percentage_by_utm here:
+percentage_by_utm <- clicks_by_utm %>%
+  group_by(utm_source) %>%
+  mutate(percentage = count/sum(count)) %>%
+  filter(ad_clicked == TRUE)
+# utm_source  ad_clicked  count percentage
+# email	TRUE	80	0.3137255
+# facebook	TRUE	180	0.3571429
+# google	TRUE	239	0.3514706
+# twitter	TRUE	66	0.3069767
+```
+
+```{r error=TRUE}
+# define experiment_split here:
+experiment_split <- ad_clicks %>%
+  group_by(experimental_group) %>%
+  summarize(count = n())
+# experimental_group  count
+# A	  827
+# B	  827
+# Good, there are the same amount of users per test.
+```
+
+```{r error=TRUE}
+# define clicks_by_experiment here:
+clicks_by_experiment <- ad_clicks %>%
+  group_by(ad_clicked, experimental_group) %>%
+  summarize(count = n())
+# ad_clicked experimental_group count
+# FALSE	      A	                517
+# FALSE	      B	                572
+# TRUE	      A	                310
+# TRUE	      B	                255
+```
+
+```{r error=TRUE}
+# define a_clicks here:
+a_clicks <- ad_clicks %>%
+  filter(experimental_group == "A")
+
+# define b_clicks here:
+b_clicks <- ad_clicks %>%
+  filter(experimental_group == "B")
+```
+
+```{r error=TRUE}
+# define a_clicks_by_day here:
+a_clicks_by_day <- a_clicks %>%
+  group_by(day, ad_clicked) %>%
+  summarize(count = n(), .groups = "drop")
+# day  ad_clicked count
+# 1 - Monday	FALSE	70
+# 1 - Monday	TRUE	43
+# etc...
+
+# define b_clicks_by_day here:
+b_clicks_by_day <- b_clicks %>%
+  group_by(day, ad_clicked) %>%
+  summarise(count = n(), .groups = "drop")
+# day ad_clicked count
+# 1 - Monday	FALSE	81
+# 1 - Monday	TRUE	32
+# etc...
+```
+
+```{r error=TRUE}
+# define a_percentage_by_day here:
+a_percentage_by_day <- a_clicks_by_day %>%
+  group_by(day) %>%
+  mutate(percentage = count/sum(count)) %>%
+  filter(ad_clicked == TRUE)
+a_percentage_by_day
+
+
+# define b_percentage_by_day here:
+b_percentage_by_day <- b_clicks_by_day %>%
+  group_by(day) %>%
+  mutate(percentage = count/sum(count)) %>%
+  filter(ad_clicked == TRUE)
+b_percentage_by_day
+```
